@@ -111,7 +111,7 @@ export default function Nodes() {
                   <td className="px-4 py-3 text-gray-400 text-xs">{node.groups?.join(', ') || '—'}</td>
                   <td className="px-4 py-3 text-gray-400">{timeAgo(node.last_seen)}</td>
                   <td className="px-4 py-3 text-xs">{formatExpiry(node.not_after)}</td>
-                  <td className="px-4 py-3"><StatusBadge active={node.active} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={node.status} /></td>
                   <td className="px-4 py-3 text-gray-600">
                     {expanded === node.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </td>

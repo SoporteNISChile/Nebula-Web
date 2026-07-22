@@ -33,7 +33,8 @@ export default function Dashboard() {
   })
 
   const allNodes = nodesData?.nodes ?? []
-  const activeCount = allNodes.filter(n => n.active).length
+  const activeCount = allNodes.filter(n => n.status === 'active').length
+  const disconnectedCount = allNodes.filter(n => n.status === 'disconnected').length
   const recentHandshakes = nodesData?.recent_handshakes ?? []
   const running = svcData?.running ?? false
 
@@ -46,7 +47,13 @@ export default function Dashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Active Nodes" value={activeCount} sub={`of ${allNodes.length} total`} icon={Wifi} color="text-green-400" />
+        <StatCard
+          label="Active Nodes"
+          value={activeCount}
+          sub={`${disconnectedCount} disconnected · ${allNodes.length} total`}
+          icon={Wifi}
+          color="text-green-400"
+        />
         <StatCard label="Total Certs" value={allNodes.length} icon={Shield} color="text-nebula-400" />
         <StatCard
           label="Service"
@@ -86,7 +93,7 @@ export default function Dashboard() {
                 </div>
                 <div className="text-right flex items-center gap-3">
                   <div className="text-xs text-gray-500">{timeAgo(node.last_seen)}</div>
-                  <StatusBadge active={node.active} />
+                  <StatusBadge status={node.status} />
                 </div>
               </div>
             ))}

@@ -122,22 +122,25 @@ async def create_cert(name: str, ip_cidr: str, groups: list[str] = None, duratio
     return True, f"{certs_dir}/{name}.crt"
 
 
-async def get_recent_handshakes(minutes: int = 60) -> list[dict]:
-    """Parse journalctl for recent handshake events."""
+# Matches any Nebula overlay IP in a log line (10.x.y.z)
+_OVERLAY_IP_RE = re.compile(r'\b(10\.\d{1,3}\.\d{1,3}\.\d{1,3})\b')
+
+
+async def _journal_lines(minutes: int) -> list[str]:
     cfg = get_config()
     service = cfg["nebula"]["service_name"]
-    since = f"{minutes} minutes ago"
-
-    code, out, err = await _run([
+    code, out, _ = await _run([
         "journalctl", "-u", service,
         "--no-pager", "--output=cat",
-        f"--since={since}",
+        f"--since={minutes} minutes ago",
     ])
-    if code != 0:
-        return []
+    return out.splitlines() if code == 0 else []
 
+
+async def get_recent_handshakes(minutes: int = 60) -> list[dict]:
+    """Parse journalctl for recent handshake events."""
     events = []
-    for line in out.splitlines():
+    for line in await _journal_lines(minutes):
         if "Handshake message" not in line:
             continue
         parsed = parse_log_line(line)
@@ -156,3 +159,58 @@ async def get_recent_handshakes(minutes: int = 60) -> list[dict]:
             "direction": "received" if "received" in parsed["msg"].lower() else "sent",
         })
     return events
+
+
+async def get_last_activity_by_ip(minutes: int = 15) -> dict[str, str]:
+    """Return {overlay_ip: last_seen_ts} from recent log traffic."""
+    last: dict[str, str] = {}
+    for line in await _journal_lines(minutes):
+        parsed = parse_logfmt(line)
+        ts = parsed.get("time", "")
+        if not ts:
+            continue
+        for ip in _OVERLAY_IP_RE.findall(line):
+            if ip not in last or ts > last[ip]:
+                last[ip] = ts
+    return last
+
+
+async def get_tunnel_states(hours: int = 24) -> dict[str, dict]:
+    """
+    Determine per-cert tunnel state by analysing handshakes and close-tunnel events.
+
+    Returns {cert_name: {last_handshake, last_close, state}}
+    state: 'active' | 'disconnected' | None
+    """
+    states: dict[str, dict] = {}
+    for line in await _journal_lines(hours * 60):
+        parsed = parse_log_line(line)
+        if not parsed:
+            continue
+        fields = parsed.get("fields", {})
+        cert_name = fields.get("certName")
+        ts = parsed.get("time", "")
+        if not cert_name or not ts:
+            continue
+
+        entry = states.setdefault(cert_name, {"last_handshake": None, "last_close": None})
+        msg = parsed.get("msg", "")
+
+        if "Handshake message received" in msg:
+            if not entry["last_handshake"] or ts > entry["last_handshake"]:
+                entry["last_handshake"] = ts
+        elif "Close tunnel" in msg or "tearing down" in msg.lower():
+            if not entry["last_close"] or ts > entry["last_close"]:
+                entry["last_close"] = ts
+
+    for name, entry in states.items():
+        hs = entry["last_handshake"]
+        cl = entry["last_close"]
+        if hs and (not cl or hs > cl):
+            entry["state"] = "active"
+        elif hs:
+            entry["state"] = "disconnected"
+        else:
+            entry["state"] = None
+
+    return states
