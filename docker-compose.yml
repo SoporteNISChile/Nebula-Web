@@ -1,0 +1,21 @@
+version: '3.9'
+
+services:
+  nebula-web:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - /etc/nebula:/etc/nebula:ro          # mount nebula config/certs
+      - /run/systemd:/run/systemd:ro         # systemd socket
+      - /var/run/dbus:/var/run/dbus:ro
+      - ./nebula-web.config.yml:/app/backend/nebula-web.config.yml:ro
+      - nebula-web-data:/app/backend/data
+    environment:
+      - NEBULA_WEB_CONFIG=/app/backend/nebula-web.config.yml
+    # Run with host PID for systemctl access
+    pid: host
+
+volumes:
+  nebula-web-data:

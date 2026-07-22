@@ -1,0 +1,31 @@
+nebula:
+  config_path: /etc/nebula/config.yml
+  certs_dir: /etc/nebula
+  service_name: nebula
+  nebula_cert_binary: /usr/local/bin/nebula-cert
+  nebula_binary: /usr/local/bin/nebula
+  use_sudo: false          # set true if web server user needs sudo
+  ca_key_path: /etc/nebula/ca.key
+  ca_cert_path: /etc/nebula/ca.crt
+
+server:
+  port: 3000
+  host: 0.0.0.0
+  allowed_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+
+auth:
+  username: admin
+  # Leave empty for first-run setup
+  # Generate: python3 -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())"
+  password_hash: ""
+  jwt_secret: ""           # auto-generated if empty
+  token_expiry: 86400      # seconds (24 hours)
+
+database:
+  path: ./nebula-web.db
+
+logs:
+  max_lines: 1000
+  active_threshold_seconds: 300   # consider node active if seen within 5 min
