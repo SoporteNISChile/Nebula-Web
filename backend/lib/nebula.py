@@ -32,9 +32,9 @@ def parse_log_line(line: str) -> Optional[dict]:
     }
 
 
-async def _run(cmd: list[str]) -> tuple[int, str, str]:
+async def _run(cmd: list[str], privileged: bool = False) -> tuple[int, str, str]:
     cfg = get_config()
-    if cfg["nebula"]["use_sudo"]:
+    if privileged or cfg["nebula"]["use_sudo"]:
         cmd = ["sudo", "-n"] + cmd
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -116,7 +116,7 @@ async def create_cert(name: str, ip_cidr: str, groups: list[str] = None, duratio
     if duration:
         cmd += ["-duration", duration]
 
-    code, out, err = await _run(cmd)
+    code, out, err = await _run(cmd, privileged=True)
     if code != 0:
         return False, err.strip() or "nebula-cert sign failed"
     return True, f"{certs_dir}/{name}.crt"

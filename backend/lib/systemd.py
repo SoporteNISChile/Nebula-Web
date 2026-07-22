@@ -3,10 +3,13 @@ import re
 from config import get_config
 
 
-async def _run_systemctl(args: list[str]) -> tuple[int, str, str]:
+PRIVILEGED_ACTIONS = {"start", "stop", "restart", "reload"}
+
+
+async def _run_systemctl(args: list[str], privileged: bool = False) -> tuple[int, str, str]:
     cfg = get_config()
     cmd = ["systemctl"] + args
-    if cfg["nebula"]["use_sudo"]:
+    if privileged or cfg["nebula"]["use_sudo"]:
         cmd = ["sudo", "-n"] + cmd
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -41,7 +44,7 @@ def _parse_systemctl_status(output: str) -> dict:
 
 
 async def get_service_status(service_name: str) -> dict:
-    code, out, err = await _run_systemctl(["status", service_name, "--no-pager", "-l"])
+    code, out, err = await _run_systemctl(["status", service_name, "--no-pager", "-l"], privileged=False)
     info = _parse_systemctl_status(out)
     info["service_name"] = service_name
     info["exit_code"] = code
@@ -53,7 +56,7 @@ async def service_action(service_name: str, action: str) -> tuple[bool, str]:
     allowed = {"start", "stop", "restart", "reload"}
     if action not in allowed:
         return False, f"Unknown action: {action}"
-    code, out, err = await _run_systemctl([action, service_name])
+    code, out, err = await _run_systemctl([action, service_name], privileged=True)
     if code != 0:
         return False, (err or out).strip()
     return True, f"Service {action} successful"

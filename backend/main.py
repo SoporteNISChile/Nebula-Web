@@ -20,11 +20,7 @@ async def _sync_handshakes_loop():
     """Background task: tail journalctl and persist handshake events to SQLite."""
     cfg = get_config()
     svc = cfg["nebula"]["service_name"]
-    use_sudo = cfg["nebula"]["use_sudo"]
-
     cmd = ["journalctl", "-u", svc, "--no-pager", "--output=cat", "-f", "-n", "200"]
-    if use_sudo:
-        cmd = ["sudo", "-n"] + cmd
 
     while True:
         try:

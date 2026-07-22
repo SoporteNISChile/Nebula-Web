@@ -12,10 +12,7 @@ router = APIRouter(prefix="/logs", tags=["logs"])
 
 
 async def _journalctl(args: list[str]) -> tuple[int, str]:
-    cfg = get_config()
     cmd = ["journalctl"] + args
-    if cfg["nebula"]["use_sudo"]:
-        cmd = ["sudo", "-n"] + cmd
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -62,8 +59,6 @@ async def stream_logs(_: str = Depends(get_current_user)):
 
     async def event_generator():
         cmd = ["journalctl", "-u", service, "--no-pager", "--output=cat", "-f", "-n", "0"]
-        if cfg["nebula"]["use_sudo"]:
-            cmd = ["sudo", "-n"] + cmd
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
