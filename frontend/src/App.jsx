@@ -7,6 +7,8 @@ import Logs from './pages/Logs'
 import Config from './pages/Config'
 import Certs from './pages/Certs'
 import Service from './pages/Service'
+import Topology from './pages/Topology'
+import Audit from './pages/Audit'
 
 function RequireAuth({ children }) {
   const token = localStorage.getItem('nebula_token')
@@ -23,7 +25,9 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="nodes" element={<Nodes />} />
+          <Route path="topology" element={<Topology />} />
           <Route path="logs" element={<Logs />} />
+          <Route path="audit" element={<Audit />} />
           <Route path="config" element={<Config />} />
           <Route path="certs" element={<Certs />} />
           <Route path="service" element={<Service />} />

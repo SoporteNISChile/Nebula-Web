@@ -2,7 +2,18 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Network, Clock, ChevronDown, ChevronUp, History } from 'lucide-react'
 import { nodes as nodesApi } from '../api/client'
+import api from '../api/client'
 import { StatusBadge } from '../components/StatusBadge'
+
+async function downloadBundle(nodeName, platform) {
+  const res = await api.get(`/certs/${nodeName}/bundle/${platform}`, { responseType: 'blob' })
+  const url = URL.createObjectURL(res.data)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${nodeName}-nebula-${platform}.zip`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 function timeAgo(ts) {
   if (!ts) return 'Never'
@@ -58,11 +69,32 @@ export default function Nodes() {
     refetchInterval: 30_000,
   })
 
+  const { data: dbIps } = useQuery({
+    queryKey: ['topology-ips'],
+    queryFn: () => api.get('/topology/ips').then(r => r.data),
+    refetchInterval: 60_000,
+  })
+
   const allNodes = data?.nodes ?? []
   const filtered = allNodes.filter(n =>
     n.name?.toLowerCase().includes(filter.toLowerCase()) ||
     n.networks?.some(ip => ip.includes(filter))
   )
+
+  // Public IP: prefer DB history (all-time) over recent journal handshakes
+  const recentByNode = {}
+  for (const h of data?.recent_handshakes ?? []) {
+    if (!h.cert_name || !h.from) continue
+    if (!recentByNode[h.cert_name] || h.time > recentByNode[h.cert_name].time) {
+      recentByNode[h.cert_name] = h
+    }
+  }
+  function publicIp(name) {
+    if (dbIps?.[name]) return dbIps[name]
+    const h = recentByNode[name]
+    if (!h?.from) return null
+    return h.from.replace(/:\d+$/, '').replace(/^\[|\]$/g, '')
+  }
 
   return (
     <div className="p-6 space-y-4">
@@ -84,7 +116,8 @@ export default function Nodes() {
           <thead>
             <tr className="border-b border-gray-800 text-left">
               <th className="px-4 py-3 label">Name</th>
-              <th className="px-4 py-3 label">VPN IP</th>
+              <th className="px-4 py-3 label">Internal IP</th>
+              <th className="px-4 py-3 label">Public IP</th>
               <th className="px-4 py-3 label">Groups</th>
               <th className="px-4 py-3 label">Last Seen</th>
               <th className="px-4 py-3 label">Expires</th>
@@ -94,10 +127,10 @@ export default function Nodes() {
           </thead>
           <tbody className="divide-y divide-gray-800">
             {isLoading && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500 text-sm">Loading…</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500 text-sm">Loading…</td></tr>
             )}
             {!isLoading && filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-500 text-sm">No nodes found</td></tr>
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-500 text-sm">No nodes found</td></tr>
             )}
             {filtered.map(node => (
               <>
@@ -107,7 +140,8 @@ export default function Nodes() {
                   onClick={() => setExpanded(expanded === node.name ? null : node.name)}
                 >
                   <td className="px-4 py-3 font-medium text-gray-200">{node.name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-nebula-300">{node.networks?.[0] ?? '—'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-nebula-300">{node.networks?.[0]?.split('/')[0] ?? '—'}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-gray-400">{publicIp(node.name) ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-400 text-xs">{node.groups?.join(', ') || '—'}</td>
                   <td className="px-4 py-3 text-gray-400">{timeAgo(node.last_seen)}</td>
                   <td className="px-4 py-3 text-xs">{formatExpiry(node.not_after)}</td>
@@ -118,7 +152,7 @@ export default function Nodes() {
                 </tr>
                 {expanded === node.name && (
                   <tr key={`${node.name}-detail`} className="bg-gray-900/50">
-                    <td colSpan={7}>
+                    <td colSpan={8}>
                       <div className="px-4 py-3 grid grid-cols-2 gap-4 text-xs text-gray-400">
                         <div>
                           <p className="label mb-1">Fingerprint</p>
@@ -129,6 +163,21 @@ export default function Nodes() {
                           <p>{node.not_before ? new Date(node.not_before).toLocaleString() : '—'}</p>
                           <p>{node.not_after ? new Date(node.not_after).toLocaleString() : '—'}</p>
                         </div>
+                      </div>
+                      <div className="px-4 pb-3">
+                        <p className="label mb-2">Install Bundle</p>
+                        <div className="flex gap-2">
+                          {[['linux','🐧'],['mac','🍎'],['windows','🪟']].map(([platform, icon]) => (
+                            <button
+                              key={platform}
+                              onClick={e => { e.stopPropagation(); downloadBundle(node.name, platform) }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors border border-gray-700"
+                            >
+                              {icon} {platform.charAt(0).toUpperCase() + platform.slice(1)}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-gray-600 mt-1.5 text-xs">Zip con cert, key, CA, config.yml y script de instalación (relay + punch hole)</p>
                       </div>
                       <NodeHistory name={node.name} />
                     </td>

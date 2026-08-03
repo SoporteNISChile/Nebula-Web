@@ -14,6 +14,11 @@ from database import init_db
 from lib.nebula import get_recent_handshakes
 from database import insert_handshake
 from routers import auth, nodes, logs, config_router, certs, service
+try:
+    from routers import audit, alerts, cli, groups, users, topology as topology_router
+    _extra = [audit, alerts, cli, groups, users, topology_router]
+except ImportError:
+    _extra = []
 
 
 async def _sync_handshakes_loop():
@@ -95,6 +100,8 @@ def create_app() -> FastAPI:
     app.include_router(config_router.router, prefix="/api")
     app.include_router(certs.router, prefix="/api")
     app.include_router(service.router, prefix="/api")
+    for _r in _extra:
+        app.include_router(_r.router, prefix="/api")
 
     @app.get("/api/health")
     async def health():

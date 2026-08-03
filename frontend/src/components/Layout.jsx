@@ -1,12 +1,14 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Network, ScrollText, Settings, ShieldCheck, Activity, LogOut
+  LayoutDashboard, Network, ScrollText, Settings, ShieldCheck, Activity, LogOut, GitFork, ClipboardList
 } from 'lucide-react'
 
 const nav = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/nodes',     icon: Network,          label: 'Nodes' },
+  { to: '/topology',  icon: GitFork,          label: 'Topology' },
   { to: '/logs',      icon: ScrollText,        label: 'Logs' },
+  { to: '/audit',     icon: ClipboardList,     label: 'Audit' },
   { to: '/config',    icon: Settings,          label: 'Config' },
   { to: '/certs',     icon: ShieldCheck,       label: 'Certificates' },
   { to: '/service',   icon: Activity,          label: 'Service' },

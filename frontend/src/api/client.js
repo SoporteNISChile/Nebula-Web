@@ -51,6 +51,7 @@ export const certs = {
   get: (name) => api.get(`/certs/${name}`),
   create: (data) => api.post('/certs', data),
   downloadUrl: (name) => `/api/certs/${name}/download`,
+  bundleUrl: (name, platform) => `/api/certs/${name}/bundle/${platform}`,
   ca: () => api.get('/certs/ca'),
 }
 
