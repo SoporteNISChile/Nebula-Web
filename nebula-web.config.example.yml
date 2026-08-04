@@ -7,6 +7,7 @@ nebula:
   use_sudo: false          # set true if web server user needs sudo
   ca_key_path: /etc/nebula/ca.key
   ca_cert_path: /etc/nebula/ca.crt
+  public_endpoint: ""      # real IP:port clients use to reach this lighthouse, e.g. "203.0.113.5:4242"
 
 server:
   port: 3000

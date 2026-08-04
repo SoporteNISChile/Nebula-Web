@@ -17,6 +17,13 @@ _defaults = {
         "use_sudo": False,
         "ca_key_path": "/etc/nebula/ca.key",
         "ca_cert_path": "/etc/nebula/ca.crt",
+        "public_endpoint": "",   # e.g. "203.0.113.5:4242" — real IP:port clients use to reach this lighthouse
+        "sshd": {
+            "key_path": "/opt/nebula-web/nebula_mgmt_key",
+            "port": 2222,
+            "host": "127.0.0.1",
+            "user": "nebula",
+        },
     },
     "server": {
         "port": 3000,
@@ -30,6 +37,11 @@ _defaults = {
         "token_expiry": 86400,
     },
     "database": {"path": "./nebula-web.db"},
+    "alerts": {
+        "slack_webhook": "",
+        "monitor_groups": ["servidores-nx", "servidores-central"],
+        "poll_interval": 60,
+    },
     "logs": {
         "max_lines": 1000,
         "active_threshold_seconds": 300,

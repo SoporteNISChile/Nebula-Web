@@ -1,8 +1,56 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Play, Square, RefreshCw, RotateCcw, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Play, Square, RefreshCw, RotateCcw, AlertTriangle, CheckCircle, Cpu, MemoryStick, HardDrive } from 'lucide-react'
 import { service as serviceApi } from '../api/client'
 import { StatusBadge } from '../components/StatusBadge'
+
+const THRESHOLD = 85
+
+function Sparkline({ data, color }) {
+  if (!data || data.length < 2) return <div className="h-8 w-full bg-gray-800/40 rounded" />
+  const W = 160, H = 32, pad = 2
+  const min = 0, max = 100
+  const pts = data.map((v, i) => {
+    const x = pad + (i / (data.length - 1)) * (W - pad * 2)
+    const y = H - pad - ((v - min) / (max - min)) * (H - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+  const last = data[data.length - 1]
+  const lastX = W - pad
+  const lastY = H - pad - ((last - min) / (max - min)) * (H - pad * 2)
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-8" preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" opacity="0.8" />
+      <circle cx={lastX} cy={lastY} r="2.5" fill={color} />
+    </svg>
+  )
+}
+
+function ResourceCard({ label, icon: Icon, value, history, color, warn }) {
+  return (
+    <div className={`card p-4 ${warn ? 'ring-1 ring-yellow-500/40' : ''}`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Icon size={14} className={warn ? 'text-yellow-400' : 'text-gray-400'} />
+          <span className="text-xs text-gray-400">{label}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {warn && <AlertTriangle size={12} className="text-yellow-400" />}
+          <span className={`text-lg font-semibold font-mono ${warn ? 'text-yellow-400' : 'text-white'}`}>
+            {value != null ? `${value}%` : '—'}
+          </span>
+        </div>
+      </div>
+      <Sparkline data={history} color={warn ? '#facc15' : color} />
+      <div className="mt-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${warn ? 'bg-yellow-500' : 'bg-nebula-500'}`}
+          style={{ width: `${Math.min(value ?? 0, 100)}%` }}
+        />
+      </div>
+    </div>
+  )
+}
 
 export default function Service() {
   const qc = useQueryClient()
@@ -17,6 +65,13 @@ export default function Service() {
   const { data: fileData } = useQuery({
     queryKey: ['service-file'],
     queryFn: () => serviceApi.file().then(r => r.data),
+  })
+
+  const { data: resData, refetch: refetchRes } = useQuery({
+    queryKey: ['service-resources'],
+    queryFn: () => serviceApi.resources().then(r => r.data),
+    refetchInterval: 10_000,
+    retry: false,
   })
 
   const action = useMutation({
@@ -41,12 +96,45 @@ export default function Service() {
   }
 
   const running = data?.running ?? false
+  const cur = resData?.current ?? {}
+  const history = resData?.history ?? []
+  const cpuHistory  = history.map(h => h.cpu)
+  const ramHistory  = history.map(h => h.ram)
+  const diskHistory = history.map(h => h.disk)
 
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-white">Service</h1>
-        <button onClick={() => refetch()} className="btn-ghost text-xs">Refresh</button>
+        <button onClick={() => { refetch(); refetchRes() }} className="btn-ghost text-xs">Refresh</button>
+      </div>
+
+      {/* Resource graphs */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <ResourceCard
+          label="CPU"
+          icon={Cpu}
+          value={cur.cpu}
+          history={cpuHistory}
+          color="#818cf8"
+          warn={(cur.cpu ?? 0) >= THRESHOLD}
+        />
+        <ResourceCard
+          label="RAM"
+          icon={MemoryStick}
+          value={cur.ram}
+          history={ramHistory}
+          color="#34d399"
+          warn={(cur.ram ?? 0) >= THRESHOLD}
+        />
+        <ResourceCard
+          label="Disk"
+          icon={HardDrive}
+          value={cur.disk}
+          history={diskHistory}
+          color="#60a5fa"
+          warn={(cur.disk ?? 0) >= THRESHOLD}
+        />
       </div>
 
       {/* Status card */}

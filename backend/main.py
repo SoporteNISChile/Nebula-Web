@@ -13,12 +13,11 @@ from config import get_config, is_setup_complete
 from database import init_db
 from lib.nebula import get_recent_handshakes
 from database import insert_handshake
-from routers import auth, nodes, logs, config_router, certs, service
-try:
-    from routers import audit, alerts, cli, groups, users, topology as topology_router
-    _extra = [audit, alerts, cli, groups, users, topology_router]
-except ImportError:
-    _extra = []
+from routers import auth, nodes, logs, config_router, certs, service, groups
+from routers import users as users_router, cli as cli_router, audit as audit_router
+from routers import alerts as alerts_router
+from routers.service import sample_resources_loop
+from lib.monitor import alert_monitor_loop
 
 
 async def _sync_handshakes_loop():
@@ -61,8 +60,12 @@ async def _sync_handshakes_loop():
 async def lifespan(app: FastAPI):
     await init_db()
     task = asyncio.create_task(_sync_handshakes_loop())
+    res_task = asyncio.create_task(sample_resources_loop())
+    alert_task = asyncio.create_task(alert_monitor_loop())
     yield
     task.cancel()
+    res_task.cancel()
+    alert_task.cancel()
 
 
 def create_app() -> FastAPI:
@@ -79,7 +82,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=cfg["server"]["allowed_origins"],
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
@@ -99,9 +102,12 @@ def create_app() -> FastAPI:
     app.include_router(logs.router, prefix="/api")
     app.include_router(config_router.router, prefix="/api")
     app.include_router(certs.router, prefix="/api")
+    app.include_router(groups.router, prefix="/api")
     app.include_router(service.router, prefix="/api")
-    for _r in _extra:
-        app.include_router(_r.router, prefix="/api")
+    app.include_router(users_router.router, prefix="/api")
+    app.include_router(cli_router.router, prefix="/api")
+    app.include_router(audit_router.router, prefix="/api")
+    app.include_router(alerts_router.router, prefix="/api")
 
     @app.get("/api/health")
     async def health():

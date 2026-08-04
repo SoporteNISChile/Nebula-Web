@@ -4,6 +4,20 @@ import { Play, Square, Trash2, Download } from 'lucide-react'
 import { logs as logsApi } from '../api/client'
 import { LevelBadge } from '../components/StatusBadge'
 
+function collapseRepeats(logs) {
+  const out = []
+  for (const log of logs) {
+    const prev = out[out.length - 1]
+    if (prev && prev.msg === log.msg && prev.level === log.level) {
+      prev._count = (prev._count ?? 1) + 1
+      prev.time = log.time  // show time of last occurrence
+    } else {
+      out.push({ ...log, _count: 1 })
+    }
+  }
+  return out
+}
+
 function LogLine({ log }) {
   const bg = {
     error: 'bg-red-950/30',
@@ -16,6 +30,9 @@ function LogLine({ log }) {
       <span className="text-gray-600 shrink-0 w-44">{log.time?.replace('T', ' ').replace('Z', '')}</span>
       <span className="w-12 shrink-0"><LevelBadge level={log.level} /></span>
       <span className="text-gray-300 break-all">{log.msg}</span>
+      {log._count > 1 && (
+        <span className="text-gray-500 shrink-0">× {log._count}</span>
+      )}
       {Object.keys(log.fields ?? {}).length > 0 && (
         <span className="text-gray-600 hidden group-hover:inline">
           {Object.entries(log.fields).map(([k, v]) => `${k}=${v}`).join(' ')}
@@ -68,10 +85,13 @@ export default function Logs() {
     if (live) bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [liveLogs, live])
 
-  const displayLogs = live ? liveLogs : (data?.logs ?? [])
+  const displayLogs = collapseRepeats(live ? liveLogs : (data?.logs ?? []))
 
   function downloadLogs() {
-    const text = displayLogs.map(l => l.raw ?? `${l.time} [${l.level}] ${l.msg}`).join('\n')
+    const text = displayLogs.map(l => {
+      const repeat = l._count > 1 ? ` (×${l._count})` : ''
+      return (l.raw ?? `${l.time} [${l.level}] ${l.msg}`) + repeat
+    }).join('\n')
     const blob = new Blob([text], { type: 'text/plain' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)

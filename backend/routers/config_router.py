@@ -3,11 +3,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from auth import get_current_user
 from config import get_config
+from database import log_audit
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -31,7 +32,7 @@ class ConfigUpdateRequest(BaseModel):
 
 
 @router.put("")
-async def update_nebula_config(body: ConfigUpdateRequest, _: str = Depends(get_current_user)):
+async def update_nebula_config(body: ConfigUpdateRequest, request: Request, actor: str = Depends(get_current_user)):
     cfg = get_config()
     path = Path(cfg["nebula"]["config_path"])
 
@@ -50,4 +51,5 @@ async def update_nebula_config(body: ConfigUpdateRequest, _: str = Depends(get_c
     except PermissionError:
         raise HTTPException(status_code=403, detail="Permission denied writing config file")
 
+    await log_audit(actor, "config.update", detail=f"backup={backup_path.name}", ip=request.client.host)
     return {"message": "Config saved", "backup": str(backup_path)}

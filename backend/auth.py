@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
@@ -29,17 +29,36 @@ def create_token(username: str) -> str:
     )
 
 
-def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-) -> str:
-    if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+def _decode_token(raw: str) -> str:
     cfg = get_config()
     try:
-        payload = jwt.decode(credentials.credentials, cfg["auth"]["jwt_secret"], algorithms=["HS256"])
+        payload = jwt.decode(raw, cfg["auth"]["jwt_secret"], algorithms=["HS256"])
         username: str = payload.get("sub")
         if not username:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
         return username
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
+
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    token: Optional[str] = Query(default=None),  # allows ?token= for download links
+) -> str:
+    raw = (credentials.credentials if credentials else None) or token
+    if not raw:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return _decode_token(raw)
+
+
+async def get_current_user_with_role(username: str = Depends(get_current_user)) -> dict:
+    from database import get_user
+    user = await get_user(username)
+    role = user["role"] if user else "admin"
+    return {"username": username, "role": role}
+
+
+async def require_super_admin(user: dict = Depends(get_current_user_with_role)) -> dict:
+    if user["role"] != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Super admin access required")
+    return user

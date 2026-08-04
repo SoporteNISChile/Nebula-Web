@@ -1,95 +1,139 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import api from '../api/client'
+import { ClipboardList, RefreshCw } from 'lucide-react'
+import { audit as auditApi } from '../api/client'
 
-function timeAgo(ts) {
+const CATEGORIES = [
+  { value: '', label: 'All' },
+  { value: 'auth', label: 'Auth' },
+  { value: 'user', label: 'Users' },
+  { value: 'cert', label: 'Certs' },
+  { value: 'config', label: 'Config' },
+  { value: 'service', label: 'Service' },
+  { value: 'cli', label: 'CLI' },
+  { value: 'group', label: 'Groups' },
+]
+
+const ACTION_COLORS = {
+  'auth.login':          'text-green-400',
+  'auth.login_failed':   'text-red-400',
+  'auth.password_change':'text-yellow-400',
+  'auth.setup':          'text-blue-400',
+  'user.create':         'text-green-400',
+  'user.update':         'text-yellow-400',
+  'user.delete':         'text-red-400',
+  'cert.create':         'text-green-400',
+  'cert.delete':         'text-red-400',
+  'cert.revoke':         'text-orange-400',
+  'cert.patch':          'text-yellow-400',
+  'cert.ca_renew':       'text-purple-400',
+  'config.update':       'text-yellow-400',
+  'service.start':       'text-green-400',
+  'service.stop':        'text-red-400',
+  'service.restart':     'text-yellow-400',
+  'service.reload':      'text-blue-400',
+  'cli.run':             'text-nebula-400',
+  'group.create':        'text-green-400',
+  'group.update':        'text-yellow-400',
+  'group.delete':        'text-red-400',
+}
+
+function fmtTs(ts) {
   if (!ts) return '—'
-  const diff = (Date.now() - new Date(ts + 'Z').getTime()) / 1000
-  if (diff < 60) return `${Math.floor(diff)}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return new Date(ts + 'Z').toLocaleString()
-}
-
-const ACTION_COLOR = {
-  login: 'text-green-400',
-  logout: 'text-gray-400',
-  cert: 'text-blue-400',
-  node: 'text-nebula-300',
-  config: 'text-yellow-400',
-  service: 'text-orange-400',
-  user: 'text-purple-400',
-}
-
-function actionColor(action) {
-  for (const [key, cls] of Object.entries(ACTION_COLOR)) {
-    if (action?.toLowerCase().startsWith(key)) return cls
-  }
-  return 'text-gray-300'
+  const d = new Date(ts.endsWith('Z') ? ts : ts + 'Z')
+  return d.toLocaleString('es-CL', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  })
 }
 
 export default function Audit() {
-  const [filter, setFilter] = useState('')
+  const [category, setCategory] = useState('')
+  const [actor, setActor] = useState('')
 
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['audit'],
-    queryFn: () => api.get('/audit?limit=500').then(r => r.data),
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['audit', category, actor],
+    queryFn: () => auditApi.list({ category: category || undefined, actor: actor || undefined, limit: 500 }).then(r => r.data),
     refetchInterval: 30_000,
   })
 
-  const entries = (data?.entries ?? []).filter(e =>
-    !filter ||
-    e.actor?.toLowerCase().includes(filter.toLowerCase()) ||
-    e.action?.toLowerCase().includes(filter.toLowerCase()) ||
-    e.target?.toLowerCase().includes(filter.toLowerCase())
-  )
+  const entries = data?.entries ?? []
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-white">Audit Log</h1>
-        <div className="flex items-center gap-3">
-          <input
-            className="input text-sm w-48"
-            placeholder="Filter…"
-            value={filter}
-            onChange={e => setFilter(e.target.value)}
-          />
-          <button onClick={() => refetch()} className="btn-ghost text-xs">Refresh</button>
+        <div className="flex items-center gap-2">
+          <ClipboardList size={18} className="text-nebula-400" />
+          <h1 className="text-xl font-semibold text-white">Audit Log</h1>
+          <span className="text-xs text-gray-500 ml-1">{entries.length} entries</span>
         </div>
+        <button onClick={() => refetch()} className="btn-ghost text-xs flex items-center gap-1" disabled={isFetching}>
+          <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} /> Refresh
+        </button>
       </div>
 
+      {/* Filters */}
+      <div className="flex flex-wrap gap-3">
+        <div className="flex gap-1">
+          {CATEGORIES.map(c => (
+            <button
+              key={c.value}
+              onClick={() => setCategory(c.value)}
+              className={`px-2.5 py-1 rounded text-xs transition-colors ${
+                category === c.value
+                  ? 'bg-nebula-700 text-nebula-200'
+                  : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          placeholder="Filter by user…"
+          value={actor}
+          onChange={e => setActor(e.target.value)}
+          className="input text-xs px-2 py-1 w-36"
+        />
+      </div>
+
+      {/* Table */}
       <div className="card overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-800 text-left">
-              <th className="px-4 py-3 label">Time</th>
-              <th className="px-4 py-3 label">Actor</th>
-              <th className="px-4 py-3 label">Action</th>
-              <th className="px-4 py-3 label">Target</th>
-              <th className="px-4 py-3 label">Detail</th>
-              <th className="px-4 py-3 label">IP</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-800">
-            {isLoading && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500 text-sm">Loading…</td></tr>
-            )}
-            {!isLoading && entries.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500 text-sm">No entries</td></tr>
-            )}
-            {entries.map((e, i) => (
-              <tr key={i} className="hover:bg-gray-800/30">
-                <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap" title={e.ts}>{timeAgo(e.ts)}</td>
-                <td className="px-4 py-2.5 text-gray-300 font-medium text-xs">{e.actor ?? '—'}</td>
-                <td className={`px-4 py-2.5 font-mono text-xs ${actionColor(e.action)}`}>{e.action ?? '—'}</td>
-                <td className="px-4 py-2.5 text-gray-400 text-xs">{e.target ?? '—'}</td>
-                <td className="px-4 py-2.5 text-gray-500 text-xs max-w-xs truncate">{e.detail ?? ''}</td>
-                <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{e.ip ?? '—'}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-800 text-left">
+                <th className="px-4 py-2.5 text-xs text-gray-500 font-medium w-44">Timestamp</th>
+                <th className="px-4 py-2.5 text-xs text-gray-500 font-medium w-28">User</th>
+                <th className="px-4 py-2.5 text-xs text-gray-500 font-medium w-36">Action</th>
+                <th className="px-4 py-2.5 text-xs text-gray-500 font-medium w-32">Target</th>
+                <th className="px-4 py-2.5 text-xs text-gray-500 font-medium">Detail</th>
+                <th className="px-4 py-2.5 text-xs text-gray-500 font-medium w-28">IP</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-800/60">
+              {isLoading && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500 text-xs">Loading…</td></tr>
+              )}
+              {!isLoading && entries.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-500 text-xs">No entries</td></tr>
+              )}
+              {entries.map(e => (
+                <tr key={e.id} className="hover:bg-gray-800/30 transition-colors">
+                  <td className="px-4 py-2 font-mono text-xs text-gray-500">{fmtTs(e.ts)}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-gray-300">{e.actor}</td>
+                  <td className="px-4 py-2 font-mono text-xs">
+                    <span className={ACTION_COLORS[e.action] ?? 'text-gray-400'}>{e.action}</span>
+                  </td>
+                  <td className="px-4 py-2 font-mono text-xs text-gray-400">{e.target ?? '—'}</td>
+                  <td className="px-4 py-2 text-xs text-gray-500 max-w-xs truncate">{e.detail ?? ''}</td>
+                  <td className="px-4 py-2 font-mono text-xs text-gray-600">{e.ip ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   )
