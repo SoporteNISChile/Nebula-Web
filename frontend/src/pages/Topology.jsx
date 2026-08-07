@@ -430,6 +430,8 @@ export default function Topology() {
                 const r    = node.isHub ? NODE_R_HUB : NODE_R_LEAF
                 const pad  = 9
                 const disc = node.disconnected
+                // Red X only for server layers (central/sucursales), not the soporte layer
+                const showX = disc && !(node.groups ?? []).includes('soporte')
                 const fill   = disc ? '#374151' : '#22c55e'
                 const stroke = disc ? '#6b7280' : '#16a34a'
                 return (
@@ -459,13 +461,13 @@ export default function Topology() {
                         fill="none" stroke="#22c55e" strokeWidth={1.5} />
                     )}
                     {/* Node circle */}
-                    <circle cx={0} cy={0} r={r} fill={fill} stroke={disc ? '#ef4444' : stroke} strokeWidth={2.5} />
+                    <circle cx={0} cy={0} r={r} fill={fill} stroke={showX ? '#ef4444' : stroke} strokeWidth={2.5} />
                     {/* Lighthouse triangle marker */}
                     {node.isHub && (
                       <polygon points="0,-9 8,7 -8,7" fill="rgba(255,255,255,0.28)" />
                     )}
                     {/* Down marker: red X over the node */}
-                    {disc && (
+                    {showX && (
                       <g style={{ pointerEvents: 'none' }}>
                         <line x1={-r * 0.55} y1={-r * 0.55} x2={r * 0.55} y2={r * 0.55}
                           stroke="#ef4444" strokeWidth={4} strokeLinecap="round" />
