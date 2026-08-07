@@ -84,6 +84,13 @@ async def init_db() -> None:
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_alerts_ts ON alerts(ts)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_alerts_cert ON alerts(cert_name)")
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS monitor_state (
+                cert_name TEXT PRIMARY KEY,
+                state TEXT NOT NULL,
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
         await db.commit()
 
 
@@ -96,6 +103,24 @@ async def insert_alert(cert_name: str, display_name: str, groups: list, ip: str,
         )
         await db.commit()
         return cur.lastrowid
+
+
+async def get_monitor_state() -> dict[str, str]:
+    """Load persisted node states: {cert_name: 'active' | 'disconnected' | 'offline'}."""
+    async with aiosqlite.connect(get_db_path()) as db:
+        cur = await db.execute("SELECT cert_name, state FROM monitor_state")
+        rows = await cur.fetchall()
+        return {r[0]: r[1] for r in rows}
+
+
+async def set_monitor_state(cert_name: str, state: str) -> None:
+    async with aiosqlite.connect(get_db_path()) as db:
+        await db.execute(
+            "INSERT INTO monitor_state (cert_name, state, updated_at) VALUES (?,?,datetime('now')) "
+            "ON CONFLICT(cert_name) DO UPDATE SET state=excluded.state, updated_at=excluded.updated_at",
+            (cert_name, state),
+        )
+        await db.commit()
 
 
 async def get_alerts(limit: int = 200, cert_name: str = None) -> list[dict]:

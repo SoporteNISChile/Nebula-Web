@@ -459,10 +459,19 @@ export default function Topology() {
                         fill="none" stroke="#22c55e" strokeWidth={1.5} />
                     )}
                     {/* Node circle */}
-                    <circle cx={0} cy={0} r={r} fill={fill} stroke={stroke} strokeWidth={2.5} />
+                    <circle cx={0} cy={0} r={r} fill={fill} stroke={disc ? '#ef4444' : stroke} strokeWidth={2.5} />
                     {/* Lighthouse triangle marker */}
                     {node.isHub && (
                       <polygon points="0,-9 8,7 -8,7" fill="rgba(255,255,255,0.28)" />
+                    )}
+                    {/* Down marker: red X over the node */}
+                    {disc && (
+                      <g style={{ pointerEvents: 'none' }}>
+                        <line x1={-r * 0.55} y1={-r * 0.55} x2={r * 0.55} y2={r * 0.55}
+                          stroke="#ef4444" strokeWidth={4} strokeLinecap="round" />
+                        <line x1={-r * 0.55} y1={r * 0.55} x2={r * 0.55} y2={-r * 0.55}
+                          stroke="#ef4444" strokeWidth={4} strokeLinecap="round" />
+                      </g>
                     )}
                     {/* Label */}
                     <text y={r + 16} textAnchor="middle"

@@ -1,4 +1,9 @@
-"""Background alert monitor: detects up/down events for monitored groups and sends Slack."""
+"""Background alert monitor: detects up/down events for monitored groups and sends Slack.
+
+Node state is persisted in the monitor_state table so that transitions that
+happen while this service is down (host reboot, deploy restart) are still
+detected and alerted on the first poll after startup.
+"""
 import asyncio
 import json
 import logging
@@ -7,13 +12,13 @@ from datetime import datetime, timezone
 import aiohttp
 
 from config import get_config
-from database import insert_alert, get_all_cert_meta
+from database import insert_alert, get_all_cert_meta, get_monitor_state, set_monitor_state
 from lib.nebula import list_certs, get_tunnel_states, get_active_peers_from_sshd, get_local_node_name
 from lib.systemd import get_service_status
 
 log = logging.getLogger("monitor")
 
-# In-memory state: {cert_name: "active" | "disconnected"}
+# In-memory state mirror of monitor_state table: {cert_name: "active" | "disconnected" | "offline"}
 _node_state: dict[str, str] = {}
 _initialized = False
 
@@ -22,24 +27,6 @@ def _extract_ip(networks: list) -> str | None:
     if networks:
         return networks[0].split("/")[0]
     return None
-
-
-def _node_status(name: str, tunnel_states: dict, live_ips: set | None, local_name: str | None, service_running: bool) -> str:
-    ip = None
-    state = tunnel_states.get(name, {})
-    hs = state.get("last_handshake")
-
-    if live_ips is not None and name == local_name and service_running:
-        return "active"
-    if live_ips is not None:
-        return "active" if ip in live_ips else ("disconnected" if hs else "offline")
-
-    tunnel_state = state.get("state")
-    if not hs:
-        return "offline"
-    if tunnel_state == "active":
-        return "active"
-    return "disconnected"
 
 
 async def _send_slack(webhook: str, cert_name: str, display_name: str, groups: list, ip: str, event: str) -> bool:
@@ -55,6 +42,31 @@ async def _send_slack(webhook: str, cert_name: str, display_name: str, groups: l
     except Exception as e:
         log.warning("Slack webhook failed: %s", e)
         return False
+
+
+async def _record_state(name: str, state: str) -> None:
+    _node_state[name] = state
+    try:
+        await set_monitor_state(name, state)
+    except Exception as e:
+        log.error("set_monitor_state failed for %s: %s", name, e)
+
+
+async def _init_state() -> None:
+    """Load persisted state from DB. If it exists, the first poll compares
+    against it and alerts on transitions that happened while we were down."""
+    global _node_state, _initialized
+    try:
+        persisted = await get_monitor_state()
+    except Exception as e:
+        log.error("get_monitor_state failed: %s", e)
+        persisted = {}
+    if persisted:
+        _node_state = persisted
+        _initialized = True
+        log.info("monitor: restored %d node states from DB", len(persisted))
+    else:
+        log.info("monitor: no persisted state — first poll seeds silently")
 
 
 async def _poll_once(cfg: dict) -> None:
@@ -108,14 +120,9 @@ async def _poll_once(cfg: dict) -> None:
 
         prev = _node_state.get(name)
 
-        if not _initialized:
-            # First run: seed state, no alerts
-            _node_state[name] = current
-            continue
-
-        if prev is None:
-            # New node discovered mid-run
-            _node_state[name] = current
+        if not _initialized or prev is None:
+            # First run ever, or new node discovered: seed state, no alert
+            await _record_state(name, current)
             continue
 
         # Detect transition
@@ -127,10 +134,11 @@ async def _poll_once(cfg: dict) -> None:
         elif not was_up and is_up:
             event = "up"
         else:
-            _node_state[name] = current
+            if current != prev:
+                await _record_state(name, current)
             continue
 
-        _node_state[name] = current
+        await _record_state(name, current)
 
         display_name = meta.get("display_name") or name
         sent = False
@@ -156,6 +164,12 @@ async def _poll_once(cfg: dict) -> None:
 async def alert_monitor_loop() -> None:
     cfg = get_config()
     interval: int = cfg.get("alerts", {}).get("poll_interval", 60)
+    await _init_state()
+    # Startup grace: after a host reboot peers need time to re-handshake.
+    # Without this, the first poll would flag every not-yet-reconnected node
+    # as down and then immediately send recovery alerts.
+    grace: int = cfg.get("alerts", {}).get("startup_grace", 120)
+    await asyncio.sleep(grace)
     while True:
         try:
             await _poll_once(cfg)
