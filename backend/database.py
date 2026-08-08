@@ -123,6 +123,17 @@ async def set_monitor_state(cert_name: str, state: str) -> None:
         await db.commit()
 
 
+async def get_last_alert_ts(cert_name: str, event: str) -> str | None:
+    """Timestamp (UTC 'YYYY-MM-DD HH:MM:SS') of the most recent alert of the given event for a node."""
+    async with aiosqlite.connect(get_db_path()) as db:
+        cur = await db.execute(
+            "SELECT ts FROM alerts WHERE cert_name=? AND event=? ORDER BY ts DESC LIMIT 1",
+            (cert_name, event),
+        )
+        row = await cur.fetchone()
+        return row[0] if row else None
+
+
 async def get_alerts(limit: int = 200, cert_name: str = None) -> list[dict]:
     import json
     async with aiosqlite.connect(get_db_path()) as db:

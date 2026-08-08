@@ -85,16 +85,21 @@ function computeLayout(nodes) {
   }
 
   // Layer 2: sCentral-left  LH  sCentral-right
+  // Nodes at odd distance from the lighthouse dip slightly lower (symmetric
+  // zigzag) so adjacent nodes/labels don't overlap when the row gets crowded.
   const midY = layerY['middle']
+  const MID_STAGGER = 64
   sCentral.slice(0, leftCount).forEach((n, i) => {
-    positioned.push({ ...n, x: cx - (leftCount - i) * H_GAP, y: midY, isHub: false })
+    const dist = leftCount - i
+    positioned.push({ ...n, x: cx - dist * H_GAP, y: midY + (dist % 2) * MID_STAGGER, isHub: false })
   })
   lhNodes.forEach((lh, i) => {
     const x = lhNodes.length === 1 ? cx : cx + (i - (lhNodes.length - 1) / 2) * H_GAP
     positioned.push({ ...lh, x, y: midY, isHub: true })
   })
   sCentral.slice(leftCount).forEach((n, i) => {
-    positioned.push({ ...n, x: cx + (i + 1) * H_GAP, y: midY, isHub: false })
+    const dist = i + 1
+    positioned.push({ ...n, x: cx + dist * H_GAP, y: midY + (dist % 2) * MID_STAGGER, isHub: false })
   })
 
   // Layer 3: servidores + ungrouped — centered row

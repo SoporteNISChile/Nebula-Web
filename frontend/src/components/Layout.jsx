@@ -47,12 +47,14 @@ export default function Layout() {
     retry: false,
     enabled: isSuperAdmin,
   })
+  // Badge = nodes currently down: latest event per node is 'down'
+  // (entries come sorted by ts DESC, so first occurrence per node wins)
   const recentDownCount = (() => {
-    const cutoff = Date.now() - 24 * 3600 * 1000
-    return (alertsData?.entries || []).filter(e => {
-      if (e.event !== 'down') return false
-      try { return new Date(e.ts + 'Z').getTime() > cutoff } catch { return false }
-    }).length
+    const latest = {}
+    for (const e of (alertsData?.entries || [])) {
+      if (!(e.cert_name in latest)) latest[e.cert_name] = e.event
+    }
+    return Object.values(latest).filter(ev => ev === 'down').length
   })()
 
   function logout() {

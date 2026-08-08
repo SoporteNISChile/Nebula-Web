@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import aiohttp
 
 from config import get_config
-from database import insert_alert, get_all_cert_meta, get_monitor_state, set_monitor_state
+from database import insert_alert, get_all_cert_meta, get_monitor_state, set_monitor_state, get_last_alert_ts
 from lib.nebula import list_certs, get_tunnel_states, get_active_peers_from_sshd, get_local_node_name
 from lib.systemd import get_service_status
 
@@ -29,12 +29,42 @@ def _extract_ip(networks: list) -> str | None:
     return None
 
 
+def _fmt_duration(seconds: float) -> str:
+    minutes = int(seconds // 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    parts.append(f"{minutes}m")
+    return " ".join(parts)
+
+
+async def _downtime_text(cert_name: str) -> str:
+    """Human duration since the node's last 'down' alert, or '' if unknown."""
+    try:
+        down_ts = await get_last_alert_ts(cert_name, "down")
+        if not down_ts:
+            return ""
+        dt = datetime.strptime(down_ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        secs = (datetime.now(timezone.utc) - dt).total_seconds()
+        if secs < 0:
+            return ""
+        return f" (estuvo caído {_fmt_duration(secs)})"
+    except Exception as e:
+        log.warning("downtime calc failed for %s: %s", cert_name, e)
+        return ""
+
+
 async def _send_slack(webhook: str, cert_name: str, display_name: str, groups: list, ip: str, event: str) -> bool:
     label = display_name or cert_name
     emoji = ":red_circle:" if event == "down" else ":large_green_circle:"
     verb = "se cayó" if event == "down" else "se recuperó"
+    downtime = await _downtime_text(cert_name) if event == "up" else ""
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    text = f"{emoji} *{label}* {verb}\nGrupos: {', '.join(groups) or 'sin grupo'} | IP: {ip or '?'} | {ts}"
+    text = f"{emoji} *{label}* {verb}{downtime}\nGrupos: {', '.join(groups) or 'sin grupo'} | IP: {ip or '?'} | {ts}"
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(webhook, json={"text": text}, timeout=aiohttp.ClientTimeout(total=10)) as resp:
