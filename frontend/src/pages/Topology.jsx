@@ -24,7 +24,12 @@ function isLighthouse(node) {
 
 function timeAgo(ts) {
   if (!ts) return 'nunca conectado'
-  const s = (Date.now() - new Date(ts + (ts.endsWith('Z') ? '' : 'Z')).getTime()) / 1000
+  // Only append Z when the timestamp carries no timezone info (sqlite style);
+  // nebula journal timestamps already end in Z or ±HH:MM
+  const hasTZ = /Z$|[+-]\d{2}:?\d{2}$/.test(ts)
+  const t = new Date(hasTZ ? ts : ts + 'Z').getTime()
+  if (Number.isNaN(t)) return '—'
+  const s = (Date.now() - t) / 1000
   if (s < 60)    return `${Math.floor(s)}s`
   if (s < 3600)  return `${Math.floor(s / 60)}m`
   if (s < 86400) return `${Math.floor(s / 3600)}h`
@@ -174,7 +179,9 @@ function NodePanel({ node, onClose }) {
         <div className="flex gap-2">
           <span className="text-gray-500 w-16">estado</span>
           <span className={disc ? 'text-red-400' : 'text-green-400'}>
-            {disc ? `offline · ${node.last_seen ? `hace ${timeAgo(node.last_seen)}` : 'nunca'}` : `activo · ${timeAgo(node.last_seen)}`}
+            {disc
+              ? `offline · ${node.last_seen ? `hace ${timeAgo(node.last_seen)}` : 'nunca'}`
+              : `activo${node.last_seen ? ` · ${timeAgo(node.last_seen)}` : ''}`}
           </span>
         </div>
         {node.not_after && (
@@ -542,7 +549,7 @@ export default function Topology() {
                 offline · {hovered.last_seen ? `hace ${timeAgo(hovered.last_seen)}` : 'nunca conectado'}
               </div>
             ) : (
-              <div className="text-green-400">activo · {timeAgo(hovered.last_seen)}</div>
+              <div className="text-green-400">activo{hovered.last_seen ? ` · ${timeAgo(hovered.last_seen)}` : ''}</div>
             )}
           </div>
         )}
